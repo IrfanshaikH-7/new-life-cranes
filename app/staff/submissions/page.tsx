@@ -9,7 +9,18 @@ async function getMySubmissions(userId: string) {
   const db = await getDb();
   const docs = await db
     .collection<SubmissionDoc>("submissions")
-    .find({ userId })
+    .find(
+      { userId },
+      {
+        projection: {
+          userId: 1, placeOfWork: 1, workDescription: 1,
+          vehicleNumber: 1, startTime: 1, editedStartTime: 1, endTime: 1,
+          diesel: 1, dieselAmount: 1, paid: 1, createdAt: 1,
+          "images": { $slice: 1 },
+          billPhoto: 0,
+        },
+      }
+    )
     .sort({ createdAt: -1 })
     .toArray();
   return docs.map((d) => ({

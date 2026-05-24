@@ -4,9 +4,7 @@ import { MongoClient, ServerApiVersion, type Db, type MongoClientOptions } from 
 const uri = process.env.DATABASE_URL;
 const dbName = process.env.DATABASE_NAME || "new-life-cranes";
 
-if (!uri) {
-  throw new Error("Missing DATABASE_URL in environment");
-}
+if (!uri) throw new Error("Missing DATABASE_URL");
 
 const options: MongoClientOptions = {
   serverApi: {
@@ -14,35 +12,33 @@ const options: MongoClientOptions = {
     strict: false,
     deprecationErrors: true,
   },
-  serverSelectionTimeoutMS: 10_000,
+  // Keep the pool small — Vercel serverless functions are short-lived
+  maxPoolSize: 5,
+  minPoolSize: 1,
+  // Don't wait forever on cold Atlas wakeup
+  serverSelectionTimeoutMS: 8_000,
+  connectTimeoutMS: 8_000,
+  socketTimeoutMS: 30_000,
 };
 
 declare global {
   // eslint-disable-next-line no-var
-  var _mongoClientPromise: Promise<MongoClient> | undefined;
+  var _mongoClient: MongoClient | undefined;
 }
 
-function connect(): Promise<MongoClient> {
-  return new MongoClient(uri!, options).connect();
-}
-
-function getClientPromise(): Promise<MongoClient> {
-  if (process.env.NODE_ENV !== "development") {
-    return connect();
+function getClient(): MongoClient {
+  // Reuse across hot reloads in dev AND across warm invocations in prod
+  if (!global._mongoClient) {
+    global._mongoClient = new MongoClient(uri!, options);
   }
-  if (!global._mongoClientPromise) {
-    global._mongoClientPromise = connect().catch((err) => {
-      // Don't keep a rejected promise around — clear so next call retries.
-      global._mongoClientPromise = undefined;
-      throw err;
-    });
-  }
-  return global._mongoClientPromise;
+  return global._mongoClient;
 }
 
 export async function getDb(): Promise<Db> {
-  const client = await getClientPromise();
+  const client = getClient();
+  // connect() is a no-op if already connected
+  await client.connect();
   return client.db(dbName);
 }
 
-export default getClientPromise();
+export default getClient();

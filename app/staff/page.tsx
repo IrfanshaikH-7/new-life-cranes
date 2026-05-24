@@ -11,7 +11,11 @@ async function getMyStats(userId: string) {
   const submissions = db.collection<SubmissionDoc>("submissions");
   const [totalCount, lastDoc] = await Promise.all([
     submissions.countDocuments({ userId }),
-    submissions.find({ userId }).sort({ createdAt: -1 }).limit(1).next(),
+    submissions
+      .find({ userId }, { projection: { createdAt: 1 } })
+      .sort({ createdAt: -1 })
+      .limit(1)
+      .next(),
   ]);
   return {
     totalCount,

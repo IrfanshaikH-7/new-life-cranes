@@ -8,7 +8,20 @@ async function getSubmissions() {
   const db = await getDb();
   const docs = await db
     .collection<SubmissionDoc>("submissions")
-    .find({})
+    .find(
+      {},
+      {
+        // Never pull base64 image data on the list — documents can be 5-10 MB each
+        projection: {
+          userId: 1, userName: 1, placeOfWork: 1, workDescription: 1,
+          vehicleNumber: 1, startTime: 1, editedStartTime: 1, endTime: 1,
+          diesel: 1, dieselAmount: 1, paid: 1, createdAt: 1,
+          // Only fetch the first image for the thumbnail
+          "images": { $slice: 1 },
+          billPhoto: 0,
+        },
+      }
+    )
     .sort({ createdAt: -1 })
     .toArray();
   return docs.map((d) => ({

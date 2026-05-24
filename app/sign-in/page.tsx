@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { ensureAdminSeed } from "@/lib/seed";
+import { ensureIndexes } from "@/lib/indexes";
 import { SignInForm } from "./sign-in-form";
 
 export default async function SignInPage() {
   await ensureAdminSeed();
+  await ensureIndexes();
   const session = await getSession();
   if (session) {
     redirect(session.role === "admin" ? "/admin" : "/staff");

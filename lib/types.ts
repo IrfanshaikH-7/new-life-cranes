@@ -8,7 +8,7 @@ export interface UserDoc {
   email: string;
   passwordHash: string;
   role: Role;
-  avatar?: string | null;
+  avatar?: string | null; // UploadThing URL
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,8 +47,8 @@ export interface SubmissionDoc {
   editedStartTime: string | null;
   diesel: boolean;
   dieselAmount: number | null; // price in ₹, only when diesel === true
-  images: string[]; // base64 data URLs, max 4
-  /** Optional bill/receipt photo — base64, added during edit */
+  images: string[]; // UploadThing URLs, max 4
+  /** Optional bill/receipt photo — UploadThing URL, added during edit */
   billPhoto: string | null;
   /** Admin marks this submission as paid */
   paid: boolean;

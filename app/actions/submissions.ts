@@ -9,10 +9,15 @@ import type { SubmissionDoc } from "@/lib/types";
 
 const ImageSchema = z
   .string()
-  .startsWith("data:image/", { message: "Invalid image data." })
-  .max(2_500_000, { message: "Image is too large (max ~2 MB each)." });
+  .url({ message: "Invalid image URL." })
+  .startsWith("https://", { message: "Image URL must be HTTPS." });
 
-const OptionalImageSchema = ImageSchema.optional().or(z.literal(""));
+const OptionalImageSchema = z
+  .string()
+  .url()
+  .startsWith("https://")
+  .optional()
+  .or(z.literal(""));
 
 const TimeSchema = z
   .string()
