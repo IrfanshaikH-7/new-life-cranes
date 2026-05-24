@@ -17,7 +17,7 @@ async function getStaff() {
     name: d.name,
     email: d.email,
     avatar: d.avatar ?? null,
-    createdAt: d.createdAt,
+    createdAt: d.createdAt.toISOString(),
   }));
 }
 
