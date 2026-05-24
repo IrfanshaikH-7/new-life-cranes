@@ -9,8 +9,8 @@ import type { UserDoc } from "@/lib/types";
 
 const AvatarSchema = z
   .string()
-  .startsWith("data:image/", { message: "Invalid image data." })
-  .max(2_500_000, { message: "Image is too large (max ~2 MB)." })
+  .url({ message: "Invalid avatar URL." })
+  .startsWith("https://", { message: "Avatar URL must be HTTPS." })
   .optional()
   .or(z.literal(""));
 

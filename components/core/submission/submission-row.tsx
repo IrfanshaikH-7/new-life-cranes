@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Fuel, Receipt, CheckCircle2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -60,13 +61,13 @@ export function SubmissionRow({ s }: { s: SubmissionRowData }) {
           </div>
         )}
         {slots.length === 1 && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={slots[0]} alt="" className="col-span-2 row-span-2 h-full w-full object-cover" />
+          <Image src={slots[0]} alt="" fill className="col-span-2 row-span-2 object-cover" sizes="72px" />
         )}
         {slots.length >= 2 &&
           slots.map((src, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={i} src={src} alt="" className="h-full w-full object-cover" />
+            <div key={i} className="relative h-full w-full">
+              <Image src={src} alt="" fill className="object-cover" sizes="36px" />
+            </div>
           ))}
         {extra > 0 && (
           <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40 text-xs font-semibold text-white">
