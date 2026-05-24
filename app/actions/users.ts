@@ -7,6 +7,13 @@ import { getDb } from "@/lib/mongodb";
 import { requireRole } from "@/lib/auth";
 import type { UserDoc } from "@/lib/types";
 
+const AvatarSchema = z
+  .string()
+  .startsWith("data:image/", { message: "Invalid image data." })
+  .max(2_500_000, { message: "Image is too large (max ~2 MB)." })
+  .optional()
+  .or(z.literal(""));
+
 const CreateStaffSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }).trim(),
   email: z.string().email({ message: "Enter a valid email." }).trim(),
@@ -15,11 +22,17 @@ const CreateStaffSchema = z.object({
     .min(8, { message: "Password must be at least 8 characters." })
     .regex(/[a-zA-Z]/, { message: "Must contain at least one letter." })
     .regex(/[0-9]/, { message: "Must contain at least one number." }),
+  avatar: AvatarSchema,
 });
 
 export type CreateStaffState =
   | {
-      errors?: { name?: string[]; email?: string[]; password?: string[] };
+      errors?: {
+        name?: string[];
+        email?: string[];
+        password?: string[];
+        avatar?: string[];
+      };
       message?: string;
       success?: boolean;
     }
@@ -35,6 +48,7 @@ export async function createStaffAction(
     name: formData.get("name"),
     email: formData.get("email"),
     password: formData.get("password"),
+    avatar: formData.get("avatar") ?? "",
   });
 
   if (!parsed.success) {
@@ -57,6 +71,7 @@ export async function createStaffAction(
     email,
     passwordHash,
     role: "staff",
+    avatar: parsed.data.avatar ? parsed.data.avatar : null,
     createdAt: now,
     updatedAt: now,
   });

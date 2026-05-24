@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth";
 import { getDb } from "@/lib/mongodb";
 import { DashboardLayout } from "@/components/core/layout/dashboard-layout";
 import { CreateSubmissionDialog } from "./create-submission-dialog";
+import { formatDate } from "@/lib/utils";
 import type { SubmissionDoc } from "@/lib/types";
 
 async function getMyStats(userId: string) {
@@ -60,7 +61,7 @@ export default async function StaffDashboardPage() {
           <StatCard
             icon={<ImageIcon className="size-4" />}
             title="Last Submission"
-            value={lastAt ? new Date(lastAt).toLocaleDateString() : "—"}
+            value={lastAt ? formatDate(lastAt) : "—"}
             description={
               lastAt
                 ? "Date of your most recent entry."

@@ -8,6 +8,7 @@ export interface UserDoc {
   email: string;
   passwordHash: string;
   role: Role;
+  avatar?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

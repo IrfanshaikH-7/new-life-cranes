@@ -8,7 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 export interface SubmissionCardData {
   id: string;
@@ -31,7 +31,7 @@ export function SubmissionCard({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const dateLabel = new Date(submission.createdAt).toLocaleDateString();
+  const dateLabel = formatDate(submission.createdAt);
   const cover = submission.images[0];
   const extras = submission.images.length - 1;
 

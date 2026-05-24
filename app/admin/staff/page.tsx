@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth";
 import { getDb } from "@/lib/mongodb";
 import { DashboardLayout } from "@/components/core/layout/dashboard-layout";
 import { CreateStaffDialog } from "./create-staff-dialog";
+import { formatDate } from "@/lib/utils";
 import type { UserDoc } from "@/lib/types";
 
 async function getStaff() {
@@ -15,8 +16,38 @@ async function getStaff() {
     id: d._id!.toString(),
     name: d.name,
     email: d.email,
+    avatar: d.avatar ?? null,
     createdAt: d.createdAt,
   }));
+}
+
+function Avatar({
+  name,
+  avatar,
+  size = "md",
+}: {
+  name: string;
+  avatar: string | null;
+  size?: "sm" | "md";
+}) {
+  const dim = size === "sm" ? "size-8" : "size-9";
+  if (avatar) {
+    return (
+      <div
+        className={`${dim} shrink-0 overflow-hidden rounded-full bg-muted`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={avatar} alt="" className="h-full w-full object-cover" />
+      </div>
+    );
+  }
+  return (
+    <div
+      className={`flex ${dim} shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground`}
+    >
+      {name.charAt(0).toUpperCase()}
+    </div>
+  );
 }
 
 export default async function StaffPage() {
@@ -51,9 +82,7 @@ export default async function StaffPage() {
               <div key={s.id}>
                 {/* Mobile row */}
                 <div className="flex items-center gap-3 px-3 py-3 md:hidden">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
-                    {s.name.charAt(0).toUpperCase()}
-                  </div>
+                  <Avatar name={s.name} avatar={s.avatar} />
                   <div className="flex min-w-0 flex-1 flex-col">
                     <p className="truncate text-sm font-medium text-foreground">
                       {s.name}
@@ -63,16 +92,14 @@ export default async function StaffPage() {
                     </p>
                   </div>
                   <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {new Date(s.createdAt).toLocaleDateString()}
+                    {formatDate(s.createdAt)}
                   </span>
                 </div>
 
                 {/* Desktop row */}
                 <div className="hidden grid-cols-[1fr_1fr_auto] items-center gap-4 px-6 py-4 md:grid">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
-                      {s.name.charAt(0).toUpperCase()}
-                    </div>
+                    <Avatar name={s.name} avatar={s.avatar} size="sm" />
                     <span className="truncate text-sm font-medium text-foreground">
                       {s.name}
                     </span>
@@ -81,7 +108,7 @@ export default async function StaffPage() {
                     {s.email}
                   </div>
                   <div className="shrink-0 text-xs text-muted-foreground">
-                    {new Date(s.createdAt).toLocaleDateString()}
+                    {formatDate(s.createdAt)}
                   </div>
                 </div>
               </div>
