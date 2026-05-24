@@ -17,7 +17,6 @@ async function getMySubmissions(userId: string) {
           vehicleNumber: 1, startTime: 1, editedStartTime: 1, endTime: 1,
           diesel: 1, dieselAmount: 1, paid: 1, createdAt: 1,
           images: { $slice: 1 },
-          billPhoto: 0,
         },
       }
     )
