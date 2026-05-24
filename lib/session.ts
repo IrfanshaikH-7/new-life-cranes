@@ -4,18 +4,24 @@ import { cookies } from "next/headers";
 import type { SessionPayload, Role } from "./types";
 
 const SESSION_COOKIE = "session";
-const secretKey = process.env.SESSION_SECRET;
-if (!secretKey) {
-  throw new Error("Missing SESSION_SECRET in environment");
+
+function getEncodedKey(): Uint8Array {
+  const secretKey = process.env.SESSION_SECRET;
+  if (!secretKey) {
+    throw new Error(
+      "SESSION_SECRET environment variable is not set. " +
+        "Add it to your .env file and to Vercel environment variables."
+    );
+  }
+  return new TextEncoder().encode(secretKey);
 }
-const encodedKey = new TextEncoder().encode(secretKey);
 
 export async function encrypt(payload: SessionPayload): Promise<string> {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(encodedKey);
+    .sign(getEncodedKey());
 }
 
 export async function decrypt(
@@ -23,7 +29,7 @@ export async function decrypt(
 ): Promise<SessionPayload | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, encodedKey, {
+    const { payload } = await jwtVerify(token, getEncodedKey(), {
       algorithms: ["HS256"],
     });
     return payload as unknown as SessionPayload;

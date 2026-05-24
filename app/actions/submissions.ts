@@ -27,7 +27,7 @@ const CreateSchema = z.object({
   startTime: TimeSchema.optional(),
   diesel: z.enum(["yes", "no"]),
   dieselAmount: z.coerce
-    .number({ invalid_type_error: "Enter a valid amount." })
+    .number({ error: "Enter a valid amount." })
     .positive({ message: "Amount must be positive." })
     .optional(),
   images: z.array(ImageSchema).min(1, { message: "Add at least one image." }).max(4, { message: "Up to 4 images allowed." }),

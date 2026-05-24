@@ -7,8 +7,16 @@ const SIGNIN_PATH = "/sign-in";
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const token = req.cookies.get("session")?.value;
-  const session = await decrypt(token);
+
+  // Gracefully handle missing SESSION_SECRET (e.g. Vercel env not configured)
+  let session = null;
+  try {
+    const token = req.cookies.get("session")?.value;
+    session = await decrypt(token);
+  } catch {
+    // If decryption fails (bad secret, etc.) treat as unauthenticated
+    session = null;
+  }
 
   const isProtected =
     pathname.startsWith(ADMIN_PREFIX) || pathname.startsWith(STAFF_PREFIX);
