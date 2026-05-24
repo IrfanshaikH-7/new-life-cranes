@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { ImagePlus, Loader2, Pencil, Receipt, X, Fuel, Upload } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { VEHICLE_NUMBERS } from "@/lib/types";
 import { useUploadThing } from "@/lib/uploadthing-client";
-import { editSubmissionAction, type SubmissionState } from "@/app/actions/submissions";
+import { editSubmissionAction } from "@/app/actions/submissions";
 
 const MAX_IMAGES = 4;
 
@@ -31,10 +31,12 @@ function fmtReadable(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const h = d.getHours(); const m = pad(d.getMinutes());
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}, ${h % 12 || 12}:${m} ${h >= 12 ? "PM" : "AM"}`;
 }
 
-/** A slot is either an already-uploaded URL or a local File pending upload */
 type Slot = { kind: "url"; url: string } | { kind: "file"; file: File; objectUrl: string };
 
 export interface EditableSubmission {
@@ -60,18 +62,13 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
   );
   const [diesel, setDiesel] = useState(submission.diesel);
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [billError, setBillError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const billInputRef = useRef<HTMLInputElement>(null);
-
-  const [state, action, pending] = useActionState<SubmissionState, FormData>(editSubmissionAction, undefined);
+  const formRef = useRef<HTMLFormElement>(null);
   const { startUpload: uploadSite } = useUploadThing("sitePhotos");
   const { startUpload: uploadBill } = useUploadThing("billPhoto");
-
-  useEffect(() => {
-    if (state?.success) { setUploadError(null); setBillError(null); setOpen(false); }
-  }, [state]);
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -80,7 +77,7 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
       setSlots(submission.images.map(url => ({ kind: "url", url })));
       setBillSlot(submission.billPhoto ? { kind: "url", url: submission.billPhoto } : null);
       setDiesel(submission.diesel);
-      setUploadError(null); setBillError(null);
+      setError(null);
     }
   };
 
@@ -99,7 +96,7 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
   const handleBillFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !file.type.startsWith("image/")) { setBillError("Must be an image."); return; }
+    if (!file || !file.type.startsWith("image/")) return;
     setBillSlot({ kind: "file", file, objectUrl: URL.createObjectURL(file) });
   };
 
@@ -114,14 +111,13 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setUploadError(null); setBillError(null);
+    setError(null);
     setUploading(true);
 
     try {
-      // Upload any new site photos
+      // Upload new site photos
       const newFiles = slots.filter((s): s is Extract<Slot, { kind: "file" }> => s.kind === "file");
       let finalUrls = slots.filter(s => s.kind === "url").map(s => (s as Extract<Slot, { kind: "url" }>).url);
-
       if (newFiles.length > 0) {
         const res = await uploadSite(newFiles.map(s => s.file));
         if (!res) throw new Error("Photo upload failed.");
@@ -136,21 +132,34 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
         finalBill = res[0].ufsUrl ?? res[0].url;
       }
 
-      const fd = new FormData(e.currentTarget);
+      const fd = new FormData(formRef.current!);
+      fd.set("submissionId", submission.id);
       fd.delete("images");
       finalUrls.forEach(url => fd.append("images", url));
       fd.set("billPhoto", finalBill ?? "");
       fd.set("vehicleNumber", vehicle);
       fd.set("diesel", diesel ? "yes" : "no");
-      action(fd);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed.");
-    } finally {
+
       setUploading(false);
+
+      startTransition(async () => {
+        const result = await editSubmissionAction(undefined, fd);
+        if (result?.success) {
+          setOpen(false);
+        } else {
+          const msg = result?.message
+            ?? Object.values(result?.errors ?? {}).flat()[0]
+            ?? "Something went wrong.";
+          setError(msg);
+        }
+      });
+    } catch (err) {
+      setUploading(false);
+      setError(err instanceof Error ? err.message : "Upload failed.");
     }
   };
 
-  const busy = uploading || pending;
+  const busy = uploading || isPending;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -167,9 +176,7 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
         </DialogHeader>
         <Separator />
 
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-          <input type="hidden" name="submissionId" value={submission.id} />
-
+        <form ref={formRef} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto px-5 py-5">
             <div className="flex flex-col gap-5">
 
@@ -197,18 +204,22 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
 
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-2">
-                  <Label className="text-muted-foreground">Original start time <span className="text-[10px] font-normal">(read-only)</span></Label>
+                  <Label className="text-muted-foreground">
+                    Original start time <span className="text-[10px] font-normal">(read-only)</span>
+                  </Label>
                   <div className="flex h-11 items-center rounded-xl border border-border bg-muted/50 px-3.5 text-sm text-muted-foreground">
                     {fmtReadable(submission.startTime)}
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="edit-start">Edited start time</Label>
-                  <Input id="edit-start" name="editedStartTime" type="datetime-local" defaultValue={toDatetimeLocal(submission.editedStartTime ?? submission.startTime)} />
+                  <Input id="edit-start" name="editedStartTime" type="datetime-local"
+                    defaultValue={toDatetimeLocal(submission.editedStartTime ?? submission.startTime)} />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="edit-end">End time</Label>
-                  <Input id="edit-end" name="endTime" type="datetime-local" defaultValue={toDatetimeLocal(submission.endTime)} />
+                  <Input id="edit-end" name="endTime" type="datetime-local"
+                    defaultValue={toDatetimeLocal(submission.endTime)} />
                 </div>
               </div>
 
@@ -261,7 +272,6 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
                   )}
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleFiles} />
-                {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
               </div>
 
               <div className="flex flex-col gap-2">
@@ -286,11 +296,10 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
                   </button>
                 )}
                 <input ref={billInputRef} type="file" accept="image/*" hidden onChange={handleBillFile} />
-                {billError && <p className="text-xs text-destructive">{billError}</p>}
               </div>
 
-              {state?.message && !state.success && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{state.message}</div>
+              {error && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>
               )}
             </div>
           </div>
@@ -300,7 +309,7 @@ export function EditSubmissionDialog({ submission }: { submission: EditableSubmi
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button type="submit" disabled={busy}>
               {uploading ? <><Upload className="size-4 animate-pulse" />Uploading…</>
-                : pending ? <><Loader2 className="size-4 animate-spin" />Saving…</>
+                : isPending ? <><Loader2 className="size-4 animate-spin" />Saving…</>
                 : "Save changes"}
             </Button>
           </DialogFooter>

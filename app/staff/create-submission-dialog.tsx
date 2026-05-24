@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { ImagePlus, Loader2, Plus, X, Fuel, Upload } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { VEHICLE_NUMBERS } from "@/lib/types";
 import { useUploadThing } from "@/lib/uploadthing-client";
-import { createSubmissionAction, type SubmissionState } from "@/app/actions/submissions";
+import { createSubmissionAction } from "@/app/actions/submissions";
 
 const MAX_IMAGES = 4;
 
@@ -25,7 +25,7 @@ function nowLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-interface Preview { file: File; objectUrl: string; uploadedUrl?: string }
+interface Preview { file: File; objectUrl: string }
 
 export function CreateSubmissionDialog() {
   const [open, setOpen] = useState(false);
@@ -33,86 +33,74 @@ export function CreateSubmissionDialog() {
   const [vehicle, setVehicle] = useState("");
   const [diesel, setDiesel] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-
-  const [state, action, pending] = useActionState<SubmissionState, FormData>(
-    createSubmissionAction, undefined
-  );
-
   const { startUpload } = useUploadThing("sitePhotos");
-
-  useEffect(() => {
-    if (state?.success) {
-      previews.forEach(p => URL.revokeObjectURL(p.objectUrl));
-      setPreviews([]); setVehicle(""); setDiesel(false);
-      setUploadError(null); setOpen(false);
-    }
-  }, [state]);
 
   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     const remaining = MAX_IMAGES - previews.length;
     if (!files.length || remaining <= 0) return;
-    const accepted = files.filter(f => f.type.startsWith("image/")).slice(0, remaining);
     setPreviews(prev => [
       ...prev,
-      ...accepted.map(f => ({ file: f, objectUrl: URL.createObjectURL(f) })),
+      ...files.filter(f => f.type.startsWith("image/")).slice(0, remaining)
+        .map(f => ({ file: f, objectUrl: URL.createObjectURL(f) })),
     ]);
-  };
-
-  const removePreview = (i: number) => {
-    URL.revokeObjectURL(previews[i].objectUrl);
-    setPreviews(p => p.filter((_, j) => j !== i));
   };
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
     if (!next) {
       previews.forEach(p => URL.revokeObjectURL(p.objectUrl));
-      setPreviews([]); setVehicle(""); setDiesel(false); setUploadError(null);
+      setPreviews([]); setVehicle(""); setDiesel(false); setError(null);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setUploadError(null);
+    setError(null);
 
-    if (previews.length === 0) {
-      setUploadError("Add at least one photo.");
-      return;
-    }
+    if (previews.length === 0) { setError("Add at least one photo."); return; }
+    if (!vehicle) { setError("Select a vehicle."); return; }
 
     setUploading(true);
     try {
-      const toUpload = previews.filter(p => !p.uploadedUrl).map(p => p.file);
-      let uploadedUrls: string[] = previews.filter(p => p.uploadedUrl).map(p => p.uploadedUrl!);
+      const res = await startUpload(previews.map(p => p.file));
+      if (!res) throw new Error("Upload failed.");
+      const urls = res.map(r => r.ufsUrl ?? r.url);
 
-      if (toUpload.length > 0) {
-        const res = await startUpload(toUpload);
-        if (!res) throw new Error("Upload failed.");
-        uploadedUrls = [...uploadedUrls, ...res.map(r => r.ufsUrl ?? r.url)];
-      }
-
-      const fd = new FormData(e.currentTarget);
-      // Remove any stale image entries and add fresh URLs
+      const fd = new FormData(formRef.current!);
       fd.delete("images");
-      uploadedUrls.forEach(url => fd.append("images", url));
+      urls.forEach(url => fd.append("images", url));
       fd.set("vehicleNumber", vehicle);
       fd.set("diesel", diesel ? "yes" : "no");
 
-      // Trigger the server action manually
-      action(fd);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed.");
-    } finally {
       setUploading(false);
+
+      startTransition(async () => {
+        const result = await createSubmissionAction(undefined, fd);
+        if (result?.success) {
+          previews.forEach(p => URL.revokeObjectURL(p.objectUrl));
+          setPreviews([]); setVehicle(""); setDiesel(false);
+          formRef.current?.reset();
+          setOpen(false);
+        } else {
+          const msg = result?.message
+            ?? Object.values(result?.errors ?? {}).flat()[0]
+            ?? "Something went wrong.";
+          setError(msg);
+        }
+      });
+    } catch (err) {
+      setUploading(false);
+      setError(err instanceof Error ? err.message : "Upload failed.");
     }
   };
 
-  const busy = uploading || pending;
+  const busy = uploading || isPending;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -141,19 +129,16 @@ export function CreateSubmissionDialog() {
                     {VEHICLE_NUMBERS.map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                {state?.errors?.vehicleNumber && <p className="text-xs text-destructive">{state.errors.vehicleNumber[0]}</p>}
               </div>
 
               <div className="flex flex-col gap-2">
                 <Label htmlFor="placeOfWork">Place of work</Label>
                 <Input id="placeOfWork" name="placeOfWork" placeholder="e.g. Site A, Tower 3" required />
-                {state?.errors?.placeOfWork && <p className="text-xs text-destructive">{state.errors.placeOfWork[0]}</p>}
               </div>
 
               <div className="flex flex-col gap-2">
                 <Label htmlFor="workDescription">Work description</Label>
                 <Textarea id="workDescription" name="workDescription" placeholder="Briefly describe the work performed today…" rows={3} required />
-                {state?.errors?.workDescription && <p className="text-xs text-destructive">{state.errors.workDescription[0]}</p>}
               </div>
 
               <div className="flex flex-col gap-2">
@@ -181,7 +166,6 @@ export function CreateSubmissionDialog() {
                     <Label htmlFor="dieselAmount" className="text-amber-700 dark:text-amber-400">Amount paid (₹)</Label>
                     <Input id="dieselAmount" name="dieselAmount" type="number" min="1" step="0.01" placeholder="e.g. 2500"
                       className="border-amber-200 bg-white focus-visible:ring-amber-400 dark:border-amber-900/40 dark:bg-transparent" required />
-                    {state?.errors?.dieselAmount && <p className="text-xs text-destructive">{state.errors.dieselAmount[0]}</p>}
                   </div>
                 )}
               </div>
@@ -198,7 +182,10 @@ export function CreateSubmissionDialog() {
                     <div key={i} className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-muted">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={p.objectUrl} alt="" className="h-full w-full object-cover" />
-                      <button type="button" onClick={() => removePreview(i)}
+                      <button type="button" onClick={() => {
+                        URL.revokeObjectURL(p.objectUrl);
+                        setPreviews(prev => prev.filter((_, j) => j !== i));
+                      }}
                         className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
                         aria-label="Remove">
                         <X className="size-3.5" />
@@ -214,12 +201,10 @@ export function CreateSubmissionDialog() {
                   )}
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleFiles} />
-                {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
-                {state?.errors?.images && <p className="text-xs text-destructive">{state.errors.images[0]}</p>}
               </div>
 
-              {state?.message && !state.success && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{state.message}</div>
+              {error && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>
               )}
             </div>
           </div>
@@ -229,7 +214,7 @@ export function CreateSubmissionDialog() {
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={busy || !vehicle}>
               {uploading ? <><Upload className="size-4 animate-pulse" />Uploading…</>
-                : pending ? <><Loader2 className="size-4 animate-spin" />Saving…</>
+                : isPending ? <><Loader2 className="size-4 animate-spin" />Saving…</>
                 : "Save submission"}
             </Button>
           </DialogFooter>
